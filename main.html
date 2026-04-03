@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Run A Kilometer With A Friend</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; } 
+        canvas { display: block; }
+        
+        /* --- UI OVERLAYS --- */
+        .overlay {
+            position: absolute; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; font-family: sans-serif; z-index: 20;
+        }
+        
+        #blocker { background-color: rgba(0,0,0,0.6); z-index: 10; display: none; cursor: pointer; }
+        #instructions { font-size: 24px; text-align: center; }
+
+        /* --- LOGIN SYSTEM --- */
+        #login-screen { background-color: rgba(10, 20, 30, 0.95); z-index: 50; }
+        .auth-box {
+            background: #222; padding: 40px; border-radius: 15px; border: 2px solid #00ffcc;
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.3); text-align: center; width: 300px;
+        }
+        .auth-box h1 { margin-top: 0; color: #00ffcc; font-size: 28px; }
+        .auth-input {
+            width: 90%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none;
+            background: #111; color: #fff; font-size: 16px; border: 1px solid #444;
+        }
+        .auth-btn {
+            width: 100%; padding: 12px; margin-top: 10px; font-weight: bold; font-size: 16px;
+            border: none; border-radius: 5px; cursor: pointer; color: #000;
+        }
+        #btn-login { background: #00ffcc; }
+        #btn-register { background: #ffaa00; margin-top: 15px; }
+        #auth-error { color: #ff3333; margin-top: 10px; font-size: 14px; height: 16px; }
+
+        /* --- CROSSHAIR & WATCH --- */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; 
+            background: white; border-radius: 50%; transform: translate(-50%, -50%); 
+            z-index: 5; pointer-events: none; mix-blend-mode: difference;
+        }
+
+        #arm-container {
+            position: absolute; bottom: -350px; left: 15%; width: 170px; height: 350px;
+            background: #e0ac69; border-radius: 30px 30px 0 0;
+            transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            z-index: 5; pointer-events: none; box-shadow: inset -10px 0 20px rgba(0,0,0,0.2);
+        }
+        #arm-container.show { bottom: -50px; }
+
+        #watch {
+            position: absolute; top: 60px; left: -15px; width: 200px; height: 130px;
+            background: #111; border-radius: 15px; border: 4px solid #333;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: #00ffcc; font-family: 'Courier New', Courier, monospace; font-weight: bold;
+            text-shadow: 0 0 5px #00ffcc; text-align: center;
+        }
+        .watch-screen-glass {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 50%);
+            border-radius: 10px; pointer-events: none;
+        }
+        #watch-distance { font-size: 24px; margin-bottom: 2px; }
+        #watch-time { font-size: 18px; margin-bottom: 4px; color: #fff; text-shadow: none; }
+        #watch-stamina { font-size: 14px; margin-bottom: 2px; }
+        #watch-hr { font-size: 14px; }
+        #watch-cheat { font-size: 12px; color: #ff3333; display: none; margin-top: 2px; text-shadow: none; }
+
+        /* --- END SCREENS --- */
+        #win-screen { background: rgba(0, 20, 0, 0.9); display: none; }
+        #death-screen { background: rgba(50, 0, 0, 0.95); display: none; }
+        .big-title { font-size: 60px; font-weight: bold; margin-bottom: 10px; text-align: center; }
+        #win-title { text-shadow: 0 0 20px #00ff00; color: #00ff00; }
+        #death-title { font-size: 80px; text-shadow: 0 0 20px red; color: #ff3333; }
+        .sub-title { font-size: 20px; margin-bottom: 20px; text-align: center;}
+        .cheat-warning { color: #ffaa00; font-weight: bold; font-size: 18px; margin-bottom: 20px; display: none; }
+
+        /* --- LEADERBOARD --- */
+        #leaderboard {
+            background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px; border: 1px solid #00ff00;
+            width: 400px; margin-bottom: 30px; max-height: 200px; overflow-y: auto;
+        }
+        .lb-row { display: flex; justify-content: space-between; font-size: 18px; margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .lb-rank { color: gold; width: 30px; }
+        .lb-name { flex-grow: 1; text-align: left; }
+        .lb-time { color: #00ffcc; font-weight: bold; }
+
+        .btn-container { display: flex; gap: 20px; }
+        .action-btn {
+            padding: 15px 30px; font-size: 18px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; color: white;
+        }
+        .action-btn:hover { transform: scale(1.05); opacity: 0.9; }
+        #btn-green { background-color: #28a745; box-shadow: 0 0 15px #28a745; }
+        #btn-blue { background-color: #007bff; box-shadow: 0 0 15px #007bff; }
+        #btn-red { background-color: #aa0000; box-shadow: 0 0 15px #ff0000; }
+        #btn-orange { background-color: #ff8800; box-shadow: 0 0 15px #ff8800; margin-top: 30px; display: none; }
+
+        /* --- DEV CONSOLE --- */
+        #dev-console {
+            position: absolute; top: -50%; left: 10%; width: 80%; height: 40%;
+            background: rgba(0, 20, 0, 0.9); border: 2px solid #00ff00; border-radius: 0 0 10px 10px;
+            font-family: 'Courier New', Courier, monospace; color: #00ff00;
+            display: flex; flex-direction: column; z-index: 100;
+            transition: top 0.3s; box-shadow: 0 10px 30px rgba(0,255,0,0.2);
+        }
+        #dev-console.open { top: 0; }
+        #console-log { flex-grow: 1; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; font-size: 16px; }
+        #console-input-wrapper { display: flex; border-top: 1px solid #00ff00; padding: 10px; background: rgba(0,0,0,0.5); }
+        #console-input { background: transparent; border: none; color: #00ff00; font-family: inherit; font-size: 18px; width: 100%; outline: none; }
+    </style>
+</head>
+<body>
+    <div id="login-screen" class="overlay">
+        <div class="auth-box">
+            <h1>R.A.K.W.A.F.</h1>
+            <p style="color:#aaa; font-size:12px; margin-top:-10px; margin-bottom:20px;">Run A Kilometer With A Friend</p>
+            <input type="text" id="auth-user" class="auth-input" placeholder="Username" autocomplete="off">
+            <input type="password" id="auth-pass" class="auth-input" placeholder="Password">
+            <div id="auth-error"></div>
+            <button id="btn-login" class="auth-btn">Log In</button>
+            <button id="btn-register" class="auth-btn">Create Account</button>
+        </div>
+    </div>
+
+    <div id="crosshair"></div>
+    
+    <div id="blocker" class="overlay">
+        <div id="instructions">
+            <strong>RUN A KILOMETER WITH A FRIEND</strong><br><br>
+            WASD = Move | Mouse = Look | Shift = Sprint<br>Hold 'Q' = Check Watch<br>
+            <strong>Press 'F' near Blue Bottles to Drink Water!</strong><br><br>
+            <em>Click anywhere to resume. (Press ` for Dev Console)</em><br>
+            <button id="btn-orange" class="action-btn">End Run & Save</button>
+        </div>
+    </div>
+
+    <div id="dev-console">
+        <div id="console-log"><div>Game Engine Initialized. Type !show.commands</div></div>
+        <div id="console-input-wrapper"><span>></span><input type="text" id="console-input" autocomplete="off" spellcheck="false"></div>
+    </div>
+
+    <div id="arm-container">
+        <div id="watch">
+            <div class="watch-screen-glass"></div>
+            <div id="watch-distance">0.00km</div>
+            <div id="watch-time">00:00.00</div>
+            <div id="watch-stamina">Stamina: 100%</div>
+            <div id="watch-hr">HR: 80 BPM</div>
+            <div id="watch-cheat">[CHEATS ENABLED]</div>
+        </div>
+    </div>
+
+    <div id="win-screen" class="overlay">
+        <div class="big-title" id="win-title">MILESTONE REACHED!</div>
+        <div class="sub-title" id="win-sub">You hit 1.00 KM!</div>
+        <div class="cheat-warning" id="win-cheat-warning">⚠️ CHEATS USED: Score Not Saved ⚠️</div>
+        
+        <div id="leaderboard">
+            <h3 style="margin-top:0; color:#fff; text-align:center;">DISTANCE LEADERBOARD</h3>
+            <div id="lb-content"></div>
+        </div>
+
+        <div class="btn-container" id="win-buttons">
+            <button class="action-btn" id="btn-green">Keep Running</button>
+            <button class="action-btn" id="btn-blue">Resign As Winner</button>
+        </div>
+    </div>
+
+    <div id="death-screen" class="overlay">
+        <div class="big-title" id="death-title">YOU DIED</div>
+        <div class="sub-title" id="death-sub">Your heart rate exceeded 175 BPM for too long.</div>
+        <div class="cheat-warning" id="death-cheat-warning">⚠️ CHEATS USED: Score Not Saved ⚠️</div>
+        <div class="btn-container">
+            <button class="action-btn" id="btn-red" onclick="location.reload()">Restart Run</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        // --- ACCOUNT & DATABASE SYSTEM (LocalStorage) ---
+        let loggedInUser = null;
+        let isCheatUsed = false; // ANTI-CHEAT FLAG
+        
+        function getDB() {
+            return JSON.parse(localStorage.getItem('runGameDB')) || {};
+        }
+        function saveDB(db) {
+            localStorage.setItem('runGameDB', JSON.stringify(db));
+        }
+
+        const uiUser = document.getElementById('auth-user');
+        const uiPass = document.getElementById('auth-pass');
+        const uiErr = document.getElementById('auth-error');
+
+        document.getElementById('btn-register').addEventListener('click', () => {
+            const u = uiUser.value.trim(); const p = uiPass.value;
+            if(u.length < 3 || p.length < 3) { uiErr.innerText = "Must be at least 3 characters."; return; }
+            const db = getDB();
+            if(db[u]) { uiErr.innerText = "Username already exists."; return; }
+            db[u] = { pass: p, maxDistance: 0 }; 
+            saveDB(db);
+            uiErr.style.color = "#00ffcc"; uiErr.innerText = "Account Created! You can now log in.";
+        });
+
+        document.getElementById('btn-login').addEventListener('click', () => {
+            const u = uiUser.value.trim(); const p = uiPass.value;
+            const db = getDB();
+            if(!db[u]) { uiErr.style.color = "#ff3333"; uiErr.innerText = "Account not found."; return; }
+            if(db[u].pass !== p) { uiErr.style.color = "#ff3333"; uiErr.innerText = "Wrong password."; return; }
+            
+            if(db[u].maxDistance === undefined) { db[u].maxDistance = 0; saveDB(db); }
+
+            loggedInUser = u;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('blocker').style.display = 'flex';
+        });
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 100);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+        }
+
+        function saveDistanceRecord() {
+            if(!loggedInUser) return;
+            // ANTI-CHEAT CHECK
+            if (isCheatUsed) return; 
+
+            const db = getDB();
+            const currentKm = distanceWalkedMeters / 1000;
+            
+            if(db[loggedInUser].maxDistance === undefined) db[loggedInUser].maxDistance = 0;
+
+            if (currentKm > db[loggedInUser].maxDistance) {
+                db[loggedInUser].maxDistance = currentKm;
+                saveDB(db);
+            }
+        }
+
+        function buildLeaderboard() {
+            const db = getDB();
+            const arr = [];
+            for(let user in db) {
+                if(db[user].maxDistance && db[user].maxDistance > 0) {
+                    arr.push({ name: user, dist: db[user].maxDistance });
+                }
+            }
+            arr.sort((a,b) => b.dist - a.dist); 
+            
+            let html = "";
+            for(let i=0; i<Math.min(arr.length, 10); i++) {
+                const isMe = arr[i].name === loggedInUser ? "font-weight:bold; color:white;" : "";
+                html += `<div class="lb-row" style="${isMe}">
+                    <span class="lb-rank">#${i+1}</span>
+                    <span class="lb-name">${arr[i].name}</span>
+                    <span class="lb-time">${arr[i].dist.toFixed(2)} km</span>
+                </div>`;
+            }
+            if(arr.length === 0) html = "<div style='text-align:center;'>No records yet!</div>";
+            document.getElementById('lb-content').innerHTML = html;
+        }
+
+        // --- UI BUTTON LOGIC ---
+        document.getElementById('btn-green').addEventListener('click', () => { 
+            document.getElementById('win-screen').style.display = 'none'; 
+            gameActive = true; controls.lock(); window.focus(); 
+        });
+
+        document.getElementById('btn-blue').addEventListener('click', () => {
+            saveDistanceRecord(); 
+            gameActive = false; 
+            document.getElementById('win-buttons').style.display = 'none'; 
+            document.getElementById('win-title').innerText = "CHAMPION RETIRED";
+            document.getElementById('win-sub').innerText = "Reload page to play again.";
+        });
+        
+        // NEW ORANGE SAVE BUTTON LOGIC
+        document.getElementById('btn-orange').addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevents the click from triggering the resume game event
+            triggerWin(); // Automatically saves and pops up the final leaderboard
+        });
+
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#87CEEB'); 
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 3.5, 35); 
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50); scene.add(dirLight);
+
+        const fieldGroup = new THREE.Group();
+        const grass = new THREE.Mesh(new THREE.PlaneGeometry(120, 80), new THREE.MeshStandardMaterial({ color: 0x2e8b57 }));
+        grass.rotation.x = -Math.PI / 2; fieldGroup.add(grass);
+        const gridHelper = new THREE.GridHelper(120, 60, 0xffffff, 0xffffff);
+        gridHelper.material.opacity = 0.15; gridHelper.material.transparent = true; gridHelper.position.y = 0.05; fieldGroup.add(gridHelper);
+        const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 80), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        centerLine.rotation.x = -Math.PI / 2; centerLine.position.y = 0.1; fieldGroup.add(centerLine);
+        const centerCircle = new THREE.Mesh(new THREE.RingGeometry(8, 8.5, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+        centerCircle.rotation.x = -Math.PI / 2; centerCircle.position.y = 0.1; fieldGroup.add(centerCircle);
+        
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const wallTop = new THREE.Mesh(new THREE.BoxGeometry(120, 10, 2), wallMat); wallTop.position.set(0, 5, -40); fieldGroup.add(wallTop);
+        const wallBottom = new THREE.Mesh(new THREE.BoxGeometry(120, 10, 2), wallMat); wallBottom.position.set(0, 5, 40); fieldGroup.add(wallBottom);
+        const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 80), wallMat); wallLeft.position.set(-60, 5, 0); fieldGroup.add(wallLeft);
+        const wallRight = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 80), wallMat); wallRight.position.set(60, 5, 0); fieldGroup.add(wallRight);
+        scene.add(fieldGroup);
+
+        // Entities
+        const waterBottles = []; const soccerPlayers = []; const allNPCs = [];
+        
+        function spawnBottle() {
+            const grp = new THREE.Group();
+            const bMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8, emissive: 0x0055ff, emissiveIntensity: 0.5 });
+            const b = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.2, 16), bMat); b.position.y = 0.6;
+            const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.2, 16), new THREE.MeshStandardMaterial({ color: 0xffffff })); cap.position.y = 1.3;
+            grp.add(b, cap);
+            grp.position.set((Math.random() * 110) - 55, 0, (Math.random() * 70) - 35);
+            scene.add(grp); waterBottles.push(grp);
+        }
+        for(let i=0; i<15; i++) spawnBottle();
+
+        function createNameTag(name) {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d'); ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.fillRect(32, 32, 192, 64);
+            ctx.font = 'bold 40px sans-serif'; ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(name, 128, 64);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
+            sprite.scale.set(4, 2, 1); sprite.visible = false; return sprite;
+        }
+
+        function createHuman(shirtColor, isIvan) {
+            const grp = new THREE.Group();
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0xffccaa })); head.position.y = 3.3; grp.add(head);
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.4, 0.5), new THREE.MeshStandardMaterial({ color: shirtColor })); body.position.y = 2.2; grp.add(body);
+            const legGeo = new THREE.BoxGeometry(0.4, 1.5, 0.4); legGeo.translate(0, -0.75, 0); 
+            const armGeo = new THREE.BoxGeometry(0.3, 1.3, 0.3); armGeo.translate(0, -0.65, 0);
+            const pantsMat = new THREE.MeshStandardMaterial({ color: 0x222222 }); const skinMat = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+            const ll = new THREE.Mesh(legGeo, pantsMat); ll.position.set(-0.3, 1.5, 0); grp.add(ll);
+            const rl = new THREE.Mesh(legGeo, pantsMat); rl.position.set(0.3, 1.5, 0); grp.add(rl);
+            const la = new THREE.Mesh(armGeo, skinMat); la.position.set(-0.8, 2.8, 0); grp.add(la);
+            const ra = new THREE.Mesh(armGeo, skinMat); ra.position.set(0.8, 2.8, 0); grp.add(ra);
+            if (isIvan) { const tag = createNameTag("Ivan"); tag.position.y = 4.3; grp.add(tag); grp.nameTag = tag; }
+            grp.limbs = { leftLeg: ll, rightLeg: rl, leftArm: la, rightArm: ra }; return grp;
+        }
+
+        const ivan = createHuman(0x0088ff, true); ivan.position.set(-5, 0, 35); scene.add(ivan); allNPCs.push(ivan);
+
+        function spawnSoccer() {
+            const sp = createHuman(Math.random() > 0.5 ? 0xff3333 : 0x3333ff, false); 
+            sp.position.set(Math.random()*40 - 20, 0, Math.random()*40 - 20);
+            scene.add(sp); soccerPlayers.push(sp); allNPCs.push(sp);
+        }
+        for(let i=0; i<4; i++) spawnSoccer();
+
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff })); ball.position.set(0, 0.6, 0);
+        let ballVelocity = new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).normalize().multiplyScalar(0.5); scene.add(ball);
+        const raycaster = new THREE.Raycaster();
+
+        // Game State
+        const controls = new PointerLockControls(camera, document.body);
+        const blocker = document.getElementById('blocker');
+        let gameActive = true; 
+        
+        let soccerStopped = false; let friendStopped = false;
+        const BASE_SPEED = 0.15; let stamina = 100.0;
+        let distanceWalkedMeters = 0; let hasReachedKilometer = false;
+        let heartRate = 80; let deathTimer = 0; let hrCooldownTimer = 0; 
+        let lastTimestamp = performance.now();
+        
+        // Timer Logic
+        let gameTime = 0; let hasStartedRunning = false;
+
+        // Dev Console
+        let isConsoleOpen = false;
+        const devConsole = document.getElementById('dev-console');
+        const consoleInput = document.getElementById('console-input');
+        const consoleLog = document.getElementById('console-log');
+
+        function printLog(msg, isUser = false) {
+            const div = document.createElement('div');
+            div.style.color = isUser ? '#fff' : '#00ff00'; div.textContent = (isUser ? "> " : "") + msg;
+            consoleLog.appendChild(div); consoleLog.scrollTop = consoleLog.scrollHeight;
+        }
+
+        function toggleConsole() {
+            if(!loggedInUser) return; 
+            isConsoleOpen = !isConsoleOpen;
+            if (isConsoleOpen) {
+                controls.unlock(); devConsole.classList.add('open');
+                setTimeout(() => consoleInput.focus(), 50); 
+                keys.w=false; keys.a=false; keys.s=false; keys.d=false; keys.shift=false; keys.q=false;
+            } else {
+                devConsole.classList.remove('open'); consoleInput.blur();
+                if(gameActive && document.getElementById('death-screen').style.display !== 'flex' && document.getElementById('win-screen').style.display !== 'flex') {
+                    controls.lock();
+                }
+            }
+        }
+
+        function markCheatUsed() {
+            if (!isCheatUsed) {
+                isCheatUsed = true;
+                printLog("⚠️ CHEATS ACTIVATED. Leaderboard saving disabled for this run.", false);
+                document.getElementById('watch-cheat').style.display = 'block';
+            }
+        }
+
+        consoleInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const c = consoleInput.value.trim().toLowerCase();
+                printLog(c, true);
+                
+                // LEGAL COMMANDS
+                if (c === '!show.commands') { 
+                    printLog("!change.lan=ua | de | en");
+                    printLog("!walk.km=<number> [CHEAT]");
+                    printLog("!walk.m=<number> [CHEAT]");
+                    printLog("!stop.soccer [CHEAT]");
+                    printLog("!stop.friend [CHEAT]");
+                    printLog("!rate.heart=<number> [CHEAT]");
+                    printLog("!spawn.<number>=bottle | soccer [CHEAT]");
+                }
+                else if (c.startsWith('!change.lan=')) { printLog("Language logic goes here!"); }
+                
+                // ILLEGAL (CHEAT) COMMANDS
+                else if (c === '!clear.db') { markCheatUsed(); localStorage.removeItem('runGameDB'); printLog("DATABASE WIPED."); }
+                else if (c === '!stop.soccer') { markCheatUsed(); soccerStopped = !soccerStopped; printLog(soccerStopped ? "Frozen." : "Resumed."); }
+                else if (c === '!stop.friend') { markCheatUsed(); friendStopped = !friendStopped; printLog(friendStopped ? "Frozen." : "Resumed."); }
+                else if (c.startsWith('!walk.km=')) {
+                    markCheatUsed(); const num = parseFloat(c.split('=')[1]);
+                    if (!isNaN(num)) { distanceWalkedMeters = num * 1000; printLog(`Distance set to ${num} km`); }
+                }
+                else if (c.startsWith('!walk.m=')) {
+                    markCheatUsed(); const num = parseFloat(c.split('=')[1]);
+                    if (!isNaN(num)) { distanceWalkedMeters = num; printLog(`Distance set to ${num} m`); }
+                }
+                else if (c.startsWith('!rate.heart=')) {
+                    markCheatUsed(); const num = parseFloat(c.split('=')[1]);
+                    if (!isNaN(num)) { 
+                        heartRate = num; printLog(`Heart rate forced to ${num} BPM`); 
+                        if (num >= 195) killPlayer("Your heart exploded (195+ BPM)!");
+                        else if (num <= 120) killPlayer("Your heart stopped (120- BPM)!");
+                    }
+                }
+                else if (c.startsWith('!spawn.')) {
+                    markCheatUsed();
+                    const match = c.match(/!spawn\.(\d+)=(bottle|soccer)/);
+                    if (match) {
+                        for(let i=0; i<parseInt(match[1]); i++) { match[2]==='bottle' ? spawnBottle() : spawnSoccer(); }
+                        printLog(`Spawned ${match[1]} ${match[2]}s.`);
+                    }
+                } else { printLog("Unknown command."); }
+                
+                consoleInput.value = '';
+            }
+        });
+
+        blocker.addEventListener('click', () => { if(gameActive && !isConsoleOpen && loggedInUser) { controls.lock(); window.focus(); } });
+        controls.addEventListener('lock', () => blocker.style.display = 'none');
+        
+        // NEW UNLOCK LOGIC: Show orange button ONLY if past 1.00 KM
+        controls.addEventListener('unlock', () => { 
+            if (!isConsoleOpen && document.getElementById('win-screen').style.display !== 'flex' && document.getElementById('death-screen').style.display !== 'flex' && gameActive && loggedInUser) {
+                blocker.style.display = 'flex'; 
+                if (distanceWalkedMeters >= 1000) {
+                    document.getElementById('btn-orange').style.display = 'inline-block';
+                } else {
+                    document.getElementById('btn-orange').style.display = 'none';
+                }
+            }
+        });
+        
+        scene.add(controls.getObject());
+
+        const keys = { w: false, a: false, s: false, d: false, shift: false, q: false, f: false };
+        const armContainer = document.getElementById('arm-container');
+        const watchDistanceUI = document.getElementById('watch-distance');
+        const watchTimeUI = document.getElementById('watch-time');
+        const watchStaminaUI = document.getElementById('watch-stamina');
+        const watchHRUI = document.getElementById('watch-hr');
+
+        window.addEventListener('keydown', (e) => {
+            if (!e || !e.key) return; 
+            if (e.key === '`' || e.key === '~') { e.preventDefault(); toggleConsole(); return; }
+            if (isConsoleOpen || !loggedInUser) return;
+            const k = e.key.toLowerCase(); const c = e.code || "";
+            if (c === 'KeyW' || c === 'ArrowUp' || k === 'w') keys.w = true;
+            if (c === 'KeyS' || c === 'ArrowDown' || k === 's') keys.s = true;
+            if (c === 'KeyA' || c === 'ArrowLeft' || k === 'a') keys.a = true;
+            if (c === 'KeyD' || c === 'ArrowRight' || k === 'd') keys.d = true;
+            if (c === 'ShiftLeft' || c === 'ShiftRight' || k === 'shift') keys.shift = true;
+            if (c === 'KeyQ' || k === 'q') keys.q = true; 
+            if (keys.q) armContainer.classList.add('show');
+
+            if (c === 'KeyF' || k === 'f') {
+                if (!keys.f && gameActive && controls.isLocked) {
+                    keys.f = true;
+                    for (let i = 0; i < waterBottles.length; i++) {
+                        const bottle = waterBottles[i];
+                        if (bottle.visible && Math.sqrt(Math.pow(camera.position.x - bottle.position.x, 2) + Math.pow(camera.position.z - bottle.position.z, 2)) < 3.0) { 
+                            bottle.visible = false; heartRate = Math.max(80, heartRate - 45); break; 
+                        }
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (!e || !e.key || isConsoleOpen || !loggedInUser) return; 
+            const k = e.key.toLowerCase(); const c = e.code || "";
+            if (c === 'KeyW' || c === 'ArrowUp' || k === 'w') keys.w = false;
+            if (c === 'KeyS' || c === 'ArrowDown' || k === 's') keys.s = false;
+            if (c === 'KeyA' || c === 'ArrowLeft' || k === 'a') keys.a = false;
+            if (c === 'KeyD' || c === 'ArrowRight' || k === 'd') keys.d = false;
+            if (c === 'ShiftLeft' || c === 'ShiftRight' || k === 'shift') keys.shift = false;
+            if (c === 'KeyQ' || k === 'q') keys.q = false; 
+            if (c === 'KeyF' || k === 'f') keys.f = false;
+            if (!keys.q) armContainer.classList.remove('show');
+        });
+
+        function killPlayer(reason) {
+            saveDistanceRecord(); 
+            gameActive = false; controls.unlock(); blocker.style.display = 'none'; 
+            
+            if (isCheatUsed) {
+                document.getElementById('death-cheat-warning').style.display = 'block';
+            }
+            
+            document.getElementById('death-screen').style.display = 'flex';
+        }
+
+        function triggerWin() {
+            hasReachedKilometer = true; gameActive = false; controls.unlock(); blocker.style.display = 'none';
+            
+            saveDistanceRecord(); 
+
+            const currentKm = distanceWalkedMeters / 1000;
+            document.getElementById('win-sub').innerText = `You have reached ${currentKm.toFixed(2)} km!`;
+
+            if (isCheatUsed) {
+                document.getElementById('win-cheat-warning').style.display = 'block';
+            }
+
+            buildLeaderboard();
+            document.getElementById('win-screen').style.display = 'flex'; 
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now(); const dt = Math.min((now - lastTimestamp) / 1000, 0.1); 
+            lastTimestamp = now; const time = now * 0.005; 
+
+            if (!loggedInUser) return; 
+
+            try {
+                if (controls.isLocked === true && gameActive) {
+                    let moveFwd = 0; let moveRgt = 0;
+                    if (keys.w) moveFwd += 1; if (keys.s) moveFwd -= 1;
+                    if (keys.d) moveRgt += 1; if (keys.a) moveRgt -= 1;
+
+                    let length = Math.sqrt(moveFwd * moveFwd + moveRgt * moveRgt);
+                    if (length > 0) { moveFwd /= length; moveRgt /= length; }
+
+                    const isMoving = length > 0;
+                    if (isMoving && !hasStartedRunning) hasStartedRunning = true;
+                    if (hasStartedRunning) gameTime += dt; 
+
+                    const isSprinting = isMoving && keys.shift && stamina > 0;
+
+                    if (isSprinting) {
+                        stamina -= 0.2; heartRate += 10 * dt; hrCooldownTimer = 0;  
+                    } else {
+                        if (stamina < 100) stamina += 0.3;
+                        hrCooldownTimer += dt;
+                        if (hrCooldownTimer >= 1.5) { if (heartRate > 80) heartRate -= 12; hrCooldownTimer = 0; }
+                    }
+
+                    if (stamina < 0) stamina = 0; if (stamina > 100) stamina = 100;
+                    if (heartRate < 80) heartRate = 80; 
+
+                    if (heartRate >= 175 && heartRate < 195) deathTimer += dt;
+                    else { deathTimer -= dt * 2; if (deathTimer < 0) deathTimer = 0; }
+                    if (deathTimer >= 25 && gameActive) killPlayer("Heart attack.");
+
+                    watchStaminaUI.innerText = `Stamina: ${Math.floor(stamina)}%`;
+                    watchHRUI.innerText = `HR: ${Math.floor(heartRate)} BPM`;
+                    watchTimeUI.innerText = formatTime(gameTime);
+
+                    if (heartRate >= 175) {
+                        watchHRUI.style.color = '#ff3333'; watchHRUI.innerText += ` (WARN: ${Math.ceil(25 - deathTimer)}s)`;
+                        armContainer.classList.add('show'); 
+                    } else watchHRUI.style.color = '#00ffcc';
+
+                    let currentSpeed = isSprinting ? BASE_SPEED * 2.2 : BASE_SPEED; 
+                    const oldX = camera.position.x; const oldZ = camera.position.z;
+                    
+                    if (isMoving) { controls.moveForward(moveFwd * currentSpeed); controls.moveRight(moveRgt * currentSpeed); }
+                    if (camera.position.x > 58) camera.position.x = 58; if (camera.position.x < -58) camera.position.x = -58;
+                    if (camera.position.z > 38) camera.position.z = 38; if (camera.position.z < -38) camera.position.z = -38;
+                    camera.position.y = 3.5;
+
+                    distanceWalkedMeters += Math.sqrt(Math.pow(camera.position.x - oldX, 2) + Math.pow(camera.position.z - oldZ, 2));
+                    watchDistanceUI.innerText = `${(distanceWalkedMeters / 1000).toFixed(2)}km`;
+
+                    if (distanceWalkedMeters >= 1000 && !hasReachedKilometer) triggerWin();
+
+                    // Ivan AI
+                    if (!friendStopped) {
+                        const distToIvan = camera.position.distanceTo(ivan.position);
+                        if (distToIvan > 0.1) ivan.lookAt(camera.position.x, 0, camera.position.z);
+                        if (isMoving && distToIvan > 6) {
+                            const dirX = camera.position.x - ivan.position.x; const dirZ = camera.position.z - ivan.position.z;
+                            const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
+                            if (dirLen > 0) {
+                                ivan.position.x += (dirX / dirLen) * (currentSpeed * 0.95);
+                                ivan.position.z += (dirZ / dirLen) * (currentSpeed * 0.95);
+                            }
+                            ivan.limbs.leftLeg.rotation.x = Math.sin(time) * 0.6; ivan.limbs.rightLeg.rotation.x = Math.sin(time + Math.PI) * 0.6;
+                            ivan.limbs.leftArm.rotation.x = Math.sin(time + Math.PI) * 0.6; ivan.limbs.rightArm.rotation.x = Math.sin(time) * 0.6;
+                        } else {
+                            ivan.limbs.leftLeg.rotation.x = 0; ivan.limbs.rightLeg.rotation.x = 0;
+                            ivan.limbs.leftArm.rotation.x = 0; ivan.limbs.rightArm.rotation.x = 0;
+                        }
+                    }
+                    const lookDir = new THREE.Vector3(); camera.getWorldDirection(lookDir);
+                    if (lookDir.lengthSq() > 0) {
+                        lookDir.normalize(); raycaster.set(camera.position, lookDir);
+                        const intersects = raycaster.intersectObject(ivan, true);
+                        if (ivan.nameTag) ivan.nameTag.visible = (intersects.length > 0);
+                    }
+                }
+            } catch (err) {}
+
+            try {
+                waterBottles.forEach(bottle => { if (bottle.visible) bottle.rotation.y += 0.05; });
+                if (!soccerStopped) {
+                    ballVelocity.multiplyScalar(0.98); ball.position.add(ballVelocity);
+                    if (ball.position.x > 50 || ball.position.x < -50) { ballVelocity.x *= -1; ball.position.x = Math.sign(ball.position.x) * 50; }
+                    if (ball.position.z > 30 || ball.position.z < -30) { ballVelocity.z *= -1; ball.position.z = Math.sign(ball.position.z) * 30; }
+
+                    soccerPlayers.forEach(sp => {
+                        sp.lookAt(ball.position.x, 0, ball.position.z);
+                        sp.limbs.leftLeg.rotation.x = Math.sin(time * 1.5) * 0.6; sp.limbs.rightLeg.rotation.x = Math.sin(time * 1.5 + Math.PI) * 0.6;
+                        sp.limbs.leftArm.rotation.x = Math.sin(time * 1.5 + Math.PI) * 0.6; sp.limbs.rightArm.rotation.x = Math.sin(time * 1.5) * 0.6;
+                        const bLen = Math.sqrt(Math.pow(ball.position.x - sp.position.x, 2) + Math.pow(ball.position.z - sp.position.z, 2));
+                        if (bLen > 1.2) {
+                            sp.position.x += ((ball.position.x - sp.position.x) / bLen) * 0.12; 
+                            sp.position.z += ((ball.position.z - sp.position.z) / bLen) * 0.12;
+                        } else {
+                            let kickLen = bLen === 0 ? 1 : bLen;
+                            ballVelocity.x = ((ball.position.x - sp.position.x) / kickLen + (Math.random() - 0.5) * 0.5) * 0.8;
+                            ballVelocity.z = ((ball.position.z - sp.position.z) / kickLen + (Math.random() - 0.5) * 0.5) * 0.8;
+                            sp.limbs.rightLeg.rotation.x = -1.5; 
+                        }
+                    });
+                }
+            } catch (err) {}
+
+            try {
+                for (let i = 0; i < allNPCs.length; i++) {
+                    for (let j = i + 1; j < allNPCs.length; j++) {
+                        const dx = allNPCs[j].position.x - allNPCs[i].position.x; const dz = allNPCs[j].position.z - allNPCs[i].position.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        if (dist < 1.2 && dist > 0) {
+                            const push = (1.2 - dist) * 0.5; 
+                            allNPCs[i].position.x -= (dx / dist) * push; allNPCs[i].position.z -= (dz / dist) * push;
+                            allNPCs[j].position.x += (dx / dist) * push; allNPCs[j].position.z += (dz / dist) * push;
+                        }
+                    }
+                }
+            } catch (err) {}
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
